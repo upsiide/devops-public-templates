@@ -1,0 +1,81 @@
+name: Docker Build + ECR Push
+
+on:
+  workflow_call:
+    inputs:
+      gh_deploy_env:
+        required: true
+        type: string
+        
+    secrets:
+      image_name:
+        required: true
+      aws_region:
+        required: true
+      pipeline_role_arn:
+        required: true
+      ecr_base_image_registry:
+        required: true
+      ecr_final_image_registry:
+        required: true
+    outputs:
+      imagetag:
+        value: ${{ jobs.build.outputs.imagetag }}
+
+jobs:
+  build:
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      checks: read
+      deployments: read
+      issues: none
+      discussions: none
+      packages: none
+      pages: none
+      pull-requests: none
+      repository-projects: none
+      security-events: none
+      statuses: write
+
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.gh_deploy_env }}
+
+    outputs:
+      imagetag: ${{ steps.output.outputs.imagetag }}
+
+    steps:
+    - uses: actions/checkout@v3
+    - name: Configure AWS Credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        role-to-assume: ${{ secrets.pipeline_role_arn }}
+        aws-region: ${{ secrets.aws_region }}
+    - name: Build the Docker image
+      env:
+        ECR_BASE_IMAGE_REGISTRY: ${{ secrets.ecr_base_image_registry }}
+        ECR_FINAL_IMAGE_REGISTRY: ${{ secrets.ecr_final_image_registry }}
+        AWS_REGION: ${{ secrets.aws_region }}
+        IMAGE_NAME: ${{ secrets.image_name }}
+      run: |
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_BASE_IMAGE_REGISTRY
+        BRANCH_NAME=$(echo $GITHUB_REF_NAME | cut -d / -f 2)
+        export IMAGE_TAG="$GITHUB_RUN_ID$(date '+%H%M%S')-$BRANCH_NAME"
+        docker build . --file Dockerfile --tag $IMAGE_NAME
+        docker build . --file Dockerfile --tag $ECR_FINAL_IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+        echo "IMAGE_TAG=$IMAGE_TAG" >> $GITHUB_ENV
+    - name: Push Image to ECR
+      env:
+        ECR_FINAL_IMAGE_REGISTRY: ${{ secrets.ecr_final_image_registry }}
+        AWS_REGION: ${{ secrets.aws_region }}
+        IMAGE_NAME: ${{ secrets.image_name }}
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      run: |
+        aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $ECR_FINAL_IMAGE_REGISTRY
+        docker push $ECR_FINAL_IMAGE_REGISTRY/$IMAGE_NAME:$IMAGE_TAG
+    - id: output
+      name: Export IMAGETAG
+      env:
+        IMAGE_TAG: ${{ env.IMAGE_TAG }}
+      run: echo "::set-output name=imagetag::$IMAGE_TAG"

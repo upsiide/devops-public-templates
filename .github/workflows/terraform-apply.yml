@@ -1,0 +1,60 @@
+name: Terraform Apply
+
+on:
+  workflow_call:
+    inputs:
+      aws_deploy_env:
+        required: true
+        type: string
+      gh_deploy_env:
+        required: true
+        type: string
+    secrets:
+      tfc_token:
+        required: true
+      aws_account_id:
+        required: true
+      app_name:
+        required: true
+      eks_cluster_name:
+        required: true
+
+jobs:
+  terraform-apply:
+    permissions:
+      id-token: write
+      contents: read
+      actions: read
+      checks: read
+      deployments: read
+      issues: none
+      discussions: none
+      packages: none
+      pages: none
+      pull-requests: none
+      repository-projects: none
+      security-events: none
+      statuses: write
+
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.gh_deploy_env}}
+
+    steps:
+    - uses: actions/checkout@v3
+    - uses: hashicorp/setup-terraform@v1
+      with:
+        cli_config_credentials_token: ${{ secrets.tfc_token }}
+    - name: Terraform Apply
+      env:
+        EKS_CLUSTER_NAME: ${{ secrets.eks_cluster_name }}
+        AWS_DEPLOY_ENV: ${{ inputs.aws_deploy_env }}
+        AWS_ACCOUNT_ID: ${{ secrets.aws_account_id }}
+        APP_NAME: ${{ secrets.app_name }}
+      run: |
+        export REPOSITORY_NAME=$(echo $GITHUB_REPOSITORY | cut -d / -f 2)
+        printenv > ./.devops/scripts/vars.env
+        cat ./.devops/scripts/vars.env
+        sh ./.devops/scripts/tfreplace.sh
+        rm ./.devops/scripts/vars.env
+        terraform -chdir=$GITHUB_WORKSPACE/.devops/terraform/$AWS_DEPLOY_ENV init
+        terraform -chdir=$GITHUB_WORKSPACE/.devops/terraform/$AWS_DEPLOY_ENV apply -auto-approve
