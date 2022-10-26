@@ -9,6 +9,10 @@ on:
       gh_deploy_env:
         required: true
         type: string
+      base_image_aws_account_id:
+        default: '602811383192'
+        required: false
+        type: string
     secrets:
       tfc_token:
         required: true
@@ -41,13 +45,14 @@ jobs:
 
     steps:
     - uses: actions/checkout@v3
-    - uses: hashicorp/setup-terraform@v1
+    - uses: hashicorp/setup-terraform@v2
       with:
         cli_config_credentials_token: ${{ secrets.tfc_token }}
     - name: Terraform Plan
       env:
         EKS_CLUSTER_NAME: ${{ secrets.eks_cluster_name }}
         AWS_DEPLOY_ENV: ${{ inputs.aws_deploy_env }}
+        BASE_IMAGE_AWS_ACCOUNT_ID: ${{ inputs.base_image_aws_account_id }}
         AWS_ACCOUNT_ID: ${{ secrets.aws_account_id }}
         APP_NAME: ${{ secrets.app_name }}
       run: |

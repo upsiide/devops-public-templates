@@ -10,7 +10,7 @@ on:
         default: 'CRITICAL,HIGH'
         required: false
         type: string
-        
+
     secrets:
       image_name:
         required: true
@@ -24,6 +24,50 @@ on:
         required: true
 
 jobs:
+  image-scan:
+    permissions:
+        id-token: write
+        contents: read
+        actions: read
+        checks: read
+        deployments: read
+        issues: none
+        discussions: none
+        packages: none
+        pages: none
+        pull-requests: none
+        repository-projects: none
+        security-events: none
+        statuses: write
+
+    name: Docker Image Full Scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Dockerfile Linting
+        uses: hadolint/hadolint-action@v2.0.0
+        with:
+          dockerfile: ./Dockerfile
+          failure-threshold: error
+      - name: Dockerfile Linting
+        uses: hadolint/hadolint-action@v2.0.0
+        with:
+          dockerfile: ./Dockerfile
+          failure-threshold: error
+      - name: Building the Image locally
+        run: docker build . --tag pipeline-image
+      - name: Image Vulnerability Scan
+        uses: hands-lab/dockle-action@v1
+        with:
+          image: pipeline-image
+          exit-code: '0'
+          exit-levl: 'FATAL'
+      - name: Image Effieciency Scan
+        uses: yuichielectric/dive-action@0.0.4
+        with:
+          image: pipeline-image
+          config-file: ${{ github.workspace }}/.effeciency-benchmark.yml
   build:
     permissions:
       id-token: write
@@ -42,6 +86,7 @@ jobs:
 
     runs-on: ubuntu-latest
     environment: ${{ inputs.gh_deploy_env }}
+    needs: image-scan
 
     steps:
     - uses: actions/checkout@v3
